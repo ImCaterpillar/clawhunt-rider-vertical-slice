@@ -62,5 +62,49 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.client.delete(f'/api/v1/sessions/{sid}/consent').json()['status'],'deleted')
         self.assertEqual(self.client.get('/api/v1/metrics').json()['total'],0)
         self.assertEqual(self.client.get('/api/v1/metrics').json()['booked'],0)
+        self.assertTrue(self.client.get('/api/v1/audit/verify').json()['valid'])
+
+    def test_persistent_audit_chain_detects_tamper(self):
+        sid=self.complete_session()
+        self.client.post(f'/api/v1/sessions/{sid}/book',json={})
+        self.assertTrue(self.client.get('/api/v1/audit/verify').json()['valid'])
+        with self.module.conn() as c: c.execute("UPDATE audit SET event='tampered' WHERE seq=1")
+        result=self.client.get('/api/v1/audit/verify').json()
+        self.assertFalse(result['valid']); self.assertEqual(result['seq'],1)
+
+    def test_lead_dedup_normalizes_variants_and_stores_tokens(self):
+        a=self.client.post('/api/v1/leads',json={'phone':'13800138000','name':'张 三','station':'站点 A'})
+        b=self.client.post('/api/v1/leads',json={'phone':'＋８６（１３８）００１３－８０００','name':' 张三 ','station':'站点A'})
+        self.assertTrue(a.json()['created']); self.assertFalse(b.json()['created'])
+        with self.module.conn() as c:
+            row=c.execute('SELECT * FROM leads').fetchone()
+            self.assertNotIn('13800138000',str(dict(row)))
+            self.assertNotIn('张三',str(dict(row)))
+
+    def test_webhook_outbox_idempotency_signature_and_tampering(self):
+        body={'event_id':'evt-1','payload':{'type':'candidate.scheduled','candidate_token':'tok-1'}}
+        first=self.client.post('/api/v1/outbox',json=body).json()
+        second=self.client.post('/api/v1/outbox',json=body).json()
+        self.assertTrue(first['created']); self.assertFalse(second['created'])
+        conflict=self.client.post('/api/v1/outbox',json={'event_id':'evt-1','payload':{'type':'candidate.hired'}})
+        self.assertEqual(conflict.status_code,409)
+        valid=self.client.post('/api/v1/outbox/verify',json={**body,'signature':first['signature']}).json()
+        bad=self.client.post('/api/v1/outbox/verify',json={**body,'payload':{'type':'candidate.hired','candidate_token':'tok-1'},'signature':first['signature']}).json()
+        self.assertTrue(valid['valid']); self.assertFalse(bad['valid'])
+        stored=self.client.get('/api/v1/outbox/evt-1').json()
+        self.assertEqual(stored['payload'],body['payload'])
+
+    def test_session_state_machine_rejects_illegal_transition_and_bypass(self):
+        sid=self.client.post('/api/v1/sessions').json()['session_id']
+        bad=self.client.post(f'/api/v1/sessions/{sid}/status',json={'status':'hired'})
+        self.assertEqual(bad.status_code,403)
+        self.assertEqual(bad.json()['detail'],'CONSENT_REQUIRED')
+        self.client.post(f'/api/v1/sessions/{sid}/consent',json={'version':'test-v1'})
+        bypass=self.client.post(f'/api/v1/sessions/{sid}/status',json={'status':'collecting'})
+        self.assertEqual(bypass.status_code,422)
+        self.assertEqual(bypass.json()['detail'],'STATUS_TRANSITION_REQUIRES_DEDICATED_ENDPOINT')
+        illegal=self.client.post(f'/api/v1/sessions/{sid}/status',json={'status':'hired'})
+        self.assertEqual(illegal.status_code,422)
+        self.assertEqual(illegal.json()['detail'],'TRANSITION_ILLEGAL')
 
 if __name__=='__main__': unittest.main(verbosity=2)
