@@ -16,15 +16,19 @@
 </main>
 <script>
 const $=id=>document.getElementById(id);let sid=null;const names=['name','birth_ym','area','job_type','has_ebike','start_date','experience'];
-function online(){ $('network').textContent=navigator.onLine?'在线':'离线 · API 操作暂不可用'; }
-addEventListener('online',online);addEventListener('offline',online);online();
+const SESSION_KEY='rider-demo-session';const PENDING_KEY='rider-demo-pending';
+function online(){ $('network').textContent=navigator.onLine?'在线':'离线 · 输入已暂存，恢复后重试'; }
+addEventListener('online',async()=>{online();await restoreSession(true)});addEventListener('offline',online);online();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 function showSlots(n){$('progress').textContent=`${n}/7`; $('bar').style.width=`${n/7*100}%`; $('slots').innerHTML=names.map((x,i)=>`<div class="slot">${i<n?'✓':'○'} ${x}</div>`).join('')}
 async function api(path,method='GET',body){if(!navigator.onLine)throw new Error('当前离线，输入已保留，请联网后重试');const r=await fetch('http://127.0.0.1:8765'+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||`HTTP ${r.status}`);return d}
-$('start').onclick=async()=>{try{if(!$('consent').checked)throw Error('请先勾选演示同意');const x=await api('/api/v1/sessions','POST');sid=x.session_id;await api(`/api/v1/sessions/${sid}/consent`,'POST',{version:'demo-v1'});$('session').textContent='会话 '+sid.slice(0,8);$('send').disabled=false;$('revoke').disabled=false;$('status').textContent='已同意，开始填写';}catch(e){$('status').textContent=e.message}};
-$('send').onclick=async()=>{try{const x=await api(`/api/v1/sessions/${sid}/message`,'POST',{text:$('message').value});showSlots(Number(x.progress.split('/')[0]));$('status').textContent=x.status==='end_minor'?'未成年分支：流程已礼貌终止':`已处理；下游安全输入：${x.model_input}`;$('book').disabled=x.status!=='complete';}catch(e){$('status').textContent=e.message}};
+function setSession(id){sid=id;localStorage.setItem(SESSION_KEY,id);$('session').textContent='会话 '+id.slice(0,8);$('send').disabled=false;$('revoke').disabled=false}
+async function restoreSession(retryPending=false){const saved=localStorage.getItem(SESSION_KEY);if(!saved)return;setSession(saved);const pending=localStorage.getItem(PENDING_KEY);if(pending!==null)$('message').value=pending;if(!navigator.onLine)return;try{const state=await api(`/api/v1/sessions/${saved}`);$('consent').checked=Boolean(state.consent_version);showSlots(Number(state.progress.split('/')[0]));$('book').disabled=state.status!=='complete';if(retryPending&&pending!==null)await submitMessage(pending)}catch(e){if(e.message.includes('SESSION_NOT_FOUND')){localStorage.removeItem(SESSION_KEY);localStorage.removeItem(PENDING_KEY)}}}
+$('start').onclick=async()=>{try{if(!$('consent').checked)throw Error('请先勾选演示同意');const x=await api('/api/v1/sessions','POST');setSession(x.session_id);await api(`/api/v1/sessions/${sid}/consent`,'POST',{version:'demo-v1'});$('status').textContent='已同意，开始填写';}catch(e){$('status').textContent=e.message}};
+async function submitMessage(text){const x=await api(`/api/v1/sessions/${sid}/message`,'POST',{text});localStorage.removeItem(PENDING_KEY);showSlots(Number(x.progress.split('/')[0]));$('status').textContent=x.status==='end_minor'?'未成年分支：流程已礼貌终止':`已处理；下游安全输入：${x.model_input}`;$('book').disabled=x.status!=='complete';return x}
+$('send').onclick=async()=>{const text=$('message').value;localStorage.setItem(PENDING_KEY,text);try{await submitMessage(text)}catch(e){$('status').textContent=e.message}};
 $('book').onclick=async()=>{try{const x=await api(`/api/v1/sessions/${sid}/book`,'POST',{station:'demo-station'});$('status').textContent=`预约成功，剩余演示名额 ${x.remaining}`}catch(e){$('status').textContent=e.message}};
-$('revoke').onclick=async()=>{try{await api(`/api/v1/sessions/${sid}/consent`,'DELETE');sid=null;$('session').textContent='';$('send').disabled=true;$('book').disabled=true;$('revoke').disabled=true;$('consent').checked=false;showSlots(0);$('status').textContent='已撤回并清除演示数据'}catch(e){$('status').textContent=e.message}};
-showSlots(0);
+$('revoke').onclick=async()=>{try{await api(`/api/v1/sessions/${sid}/consent`,'DELETE');sid=null;localStorage.removeItem(SESSION_KEY);localStorage.removeItem(PENDING_KEY);$('message').value='';$('session').textContent='';$('send').disabled=true;$('book').disabled=true;$('revoke').disabled=true;$('consent').checked=false;showSlots(0);$('status').textContent='已撤回并清除演示数据'}catch(e){$('status').textContent=e.message}};
+showSlots(0);restoreSession();
 </script>
 </body></html>
