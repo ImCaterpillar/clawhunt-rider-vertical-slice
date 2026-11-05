@@ -64,6 +64,15 @@ def append_audit(c, event:str, subject_token:str):
     c.execute('INSERT INTO audit(event,subject_token,prev_hash,entry_hash) VALUES(?,?,?,?)',
               (event,subject_token,prev_hash,entry_hash))
 
+@app.get('/api/v1/sessions/{sid}')
+def read_session(sid:str):
+    with conn() as c:
+        row=c.execute('SELECT consent_version,status,slots_json FROM sessions WHERE id=?',(sid,)).fetchone()
+    if not row: raise HTTPException(404,'SESSION_NOT_FOUND')
+    slots=json.loads(row['slots_json'])
+    return {'session_id':sid,'consent_version':row['consent_version'],'status':row['status'],
+            'progress':f'{len(slots)}/{len(SLOTS)}','slots':sorted(slots)}
+
 @app.post('/api/v1/sessions')
 def create_session():
     sid=uuid.uuid4().hex
