@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import unittest
-from dashboard import pii_fuzz_scan, seed_events, sql_metrics, verify_dashboard
+from dashboard import pii_fuzz_scan, query_metrics, seed_events, sql_metrics, verify_dashboard
 
 class DashboardTests(unittest.TestCase):
     def test_seed_is_deterministic(self):
@@ -18,7 +18,12 @@ class DashboardTests(unittest.TestCase):
         from dashboard import build_metric_views
         db=sqlite3.connect(':memory:');build_metric_views(db,seed_events(2))
         for key in ('phone','name','email'):
-            with self.assertRaisesRegex(ValueError,'FILTER_NOT_ALLOWED'):sql_metrics(db,{key:'x'})
+            with self.assertRaisesRegex(ValueError,'FILTER_NOT_ALLOWED'):query_metrics(db,filters={key:'x'})
+        for field in ('phone','name','email','id_card'):
+            with self.assertRaisesRegex(ValueError,'FIELD_NOT_ALLOWED'):query_metrics(db,fields=(field,))
+        for group in ('phone','name'):
+            with self.assertRaisesRegex(ValueError,'GROUP_NOT_ALLOWED'):query_metrics(db,groupby=group)
+        self.assertEqual(set(query_metrics(db,fields=('total','booked'))),{'total','booked'})
 
     def test_empty_dataset_metrics_are_zero(self):
         self.assertEqual(verify_dashboard(n=0)['sql'],{'total':0,'complete':0,'booked':0,'completion_rate':0.0})
