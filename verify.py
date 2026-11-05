@@ -4,6 +4,7 @@ import os, subprocess, sys
 ROOT=os.path.dirname(os.path.abspath(__file__))
 commands=[
     [sys.executable,'run_tests.py'],
+    [sys.executable,'-m','unittest','test_workflow','test_dashboard','-v'],
     [sys.executable,'-m','unittest','test_api','-v'],
 ]
 if os.environ.get('RUN_BROWSER_E2E')=='1':
