@@ -1,27 +1,16 @@
 # -*- coding: utf-8 -*-
 """Local SQLite-backed API demo. Not production-ready; synthetic data only."""
 from __future__ import annotations
-import json, os, re, sqlite3, threading, uuid
-from contextlib import contextmanager
+import json, os, re, sqlite3, uuid
+from contextlib import asynccontextmanager, contextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from core import SLOTS, mask_and_tokenize
 
 DB_PATH=os.environ.get('RIDER_DEMO_DB','rider_demo.sqlite3')
 SECRET=b'demo-only-not-production'
-app=FastAPI(title='Rider Vertical Slice Demo',version='0.2.0')
-_db_lock=threading.Lock()
-
-@contextmanager
-def conn():
-    c=sqlite3.connect(DB_PATH,timeout=10,isolation_level=None)
-    c.row_factory=sqlite3.Row
-    try:
-        yield c
-    finally: c.close()
-
-@app.on_event('startup')
-def init_db():
+@asynccontextmanager
+async def lifespan(app):
     with conn() as c:
         c.execute('PRAGMA journal_mode=WAL')
         c.execute('''CREATE TABLE IF NOT EXISTS sessions (
@@ -35,6 +24,17 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS audit (
             seq INTEGER PRIMARY KEY AUTOINCREMENT,event TEXT NOT NULL,subject_token TEXT NOT NULL)''')
         c.execute("INSERT OR IGNORE INTO capacity(station,remaining) VALUES('demo-station',5)")
+    yield
+
+app=FastAPI(title='Rider Vertical Slice Demo',version='0.2.0',lifespan=lifespan)
+
+@contextmanager
+def conn():
+    c=sqlite3.connect(DB_PATH,timeout=10,isolation_level=None)
+    c.row_factory=sqlite3.Row
+    try:
+        yield c
+    finally: c.close()
 
 class Consent(BaseModel): version:str
 class Message(BaseModel): text:str
