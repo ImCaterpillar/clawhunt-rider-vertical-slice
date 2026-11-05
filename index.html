@@ -8,7 +8,7 @@
 </style>
 </head>
 <body>
-<header class="top"><strong>骑手报名</strong><span>演示环境 · 合成数据</span></header>
+<header class="top"><strong>骑手报名</strong><span><span id="network">在线</span> · 演示环境 · 合成数据</span></header>
 <main class="layout">
 <section class="panel"><h1 style="font-size:21px;margin:0 0 8px">报名与站点预约</h1><div class="muted">此页面只连接本机 API 演示。请勿输入真实个人信息。</div><p><label><input id="consent" type="checkbox">我同意使用合成信息进行本次演示</label></p><div class="row"><button id="start">开始报名</button><button id="revoke" class="secondary" disabled>撤回并清除</button><span id="session" class="muted"></span></div></section>
 <section class="panel"><h2 style="font-size:17px;margin:0">报名进度</h2><div class="progress"><div id="bar" class="bar"></div></div><div id="progress" class="muted">0/7</div><div class="slots" id="slots"></div></section>
@@ -16,8 +16,11 @@
 </main>
 <script>
 const $=id=>document.getElementById(id);let sid=null;const names=['name','birth_ym','area','job_type','has_ebike','start_date','experience'];
+function online(){ $('network').textContent=navigator.onLine?'在线':'离线 · API 操作暂不可用'; }
+addEventListener('online',online);addEventListener('offline',online);online();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 function showSlots(n){$('progress').textContent=`${n}/7`; $('bar').style.width=`${n/7*100}%`; $('slots').innerHTML=names.map((x,i)=>`<div class="slot">${i<n?'✓':'○'} ${x}</div>`).join('')}
-async function api(path,method='GET',body){const r=await fetch('http://127.0.0.1:8765'+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||`HTTP ${r.status}`);return d}
+async function api(path,method='GET',body){if(!navigator.onLine)throw new Error('当前离线，输入已保留，请联网后重试');const r=await fetch('http://127.0.0.1:8765'+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||`HTTP ${r.status}`);return d}
 $('start').onclick=async()=>{try{if(!$('consent').checked)throw Error('请先勾选演示同意');const x=await api('/api/v1/sessions','POST');sid=x.session_id;await api(`/api/v1/sessions/${sid}/consent`,'POST',{version:'demo-v1'});$('session').textContent='会话 '+sid.slice(0,8);$('send').disabled=false;$('revoke').disabled=false;$('status').textContent='已同意，开始填写';}catch(e){$('status').textContent=e.message}};
 $('send').onclick=async()=>{try{const x=await api(`/api/v1/sessions/${sid}/message`,'POST',{text:$('message').value});showSlots(Number(x.progress.split('/')[0]));$('status').textContent=x.status==='end_minor'?'未成年分支：流程已礼貌终止':`已处理；下游安全输入：${x.model_input}`;$('book').disabled=x.status!=='complete';}catch(e){$('status').textContent=e.message}};
 $('book').onclick=async()=>{try{const x=await api(`/api/v1/sessions/${sid}/book`,'POST',{station:'demo-station'});$('status').textContent=`预约成功，剩余演示名额 ${x.remaining}`}catch(e){$('status').textContent=e.message}};
