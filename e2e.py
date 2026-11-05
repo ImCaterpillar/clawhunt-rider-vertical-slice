@@ -42,11 +42,19 @@ with sync_playwright() as p:
     page.context.set_offline(True)
     expect(page.locator('#network')).to_contain_text('离线')
     page.get_by_role('button',name='提交信息').click()
-    expect(page.locator('#status')).not_to_be_empty(timeout=5000)
+    expect(page.locator('#status')).to_contain_text('离线',timeout=5000)
+    assert field.input_value()=='name=Retry'
+    expect(page.locator('#progress')).to_have_text('0/7')
+    page.wait_for_timeout(10000)
+    page.reload(wait_until='domcontentloaded')
     assert field.input_value()=='name=Retry'
     expect(page.locator('#progress')).to_have_text('0/7')
     page.context.set_offline(False)
     expect(page.locator('#network')).to_contain_text('在线')
+    expect(page.locator('#session')).not_to_be_empty()
+    expect(page.locator('#progress')).to_have_text('1/7',timeout=10000)
+    page.reload(wait_until='networkidle')
+    expect(page.locator('#progress')).to_have_text('1/7')
     page.screenshot(path='e2e-mobile.png',full_page=True)
     assert not errors,errors
     print('PASS: 375/390/414 widths + 150% text, consent, 7/7, booking, revoke, offline failure/retry state, no page errors')
