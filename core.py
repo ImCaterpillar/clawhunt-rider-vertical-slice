@@ -10,6 +10,7 @@ import hmac
 import json
 import re
 import threading
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,20 +18,31 @@ from typing import Dict, Optional
 
 SLOTS = ("name", "birth_ym", "area", "job_type", "has_ebike", "start_date", "experience")
 PHONE_RE = re.compile(r"(?<!\d)(?:\+?86[- ]?)?1[3-9]\d[- ]?\d{4}[- ]?\d{4}(?!\d)")
+PHONE_CANDIDATE_RE = re.compile(r"(?<!\d)(?:\+?86[\s().-]*)?1(?:[\s().-]*\d){10}(?!\d)")
+INVISIBLE = dict.fromkeys(map(ord, "\u200b\u200c\u200d\ufeff\u2060"), None)
+
+
+def _normalize_phone_candidate(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value).translate(INVISIBLE)
+    digits = "".join(ch for ch in value if ch.isdecimal())
+    digits = "".join(str(unicodedata.digit(ch)) for ch in digits)
+    return digits[-11:] if len(digits) in (11, 13) else ""
 
 
 def mask_and_tokenize(text: str, secret: bytes) -> tuple[str, dict[str, str]]:
-    """Replace Chinese mobile numbers before downstream/model processing."""
+    """Replace common Unicode and separator variants of Chinese mobile numbers."""
+    text = unicodedata.normalize("NFKC", text).translate(INVISIBLE)
     mapping: dict[str, str] = {}
 
     def replace(match: re.Match[str]) -> str:
-        raw = re.sub(r"\D", "", match.group(0))
-        number = raw[-11:]
+        number = _normalize_phone_candidate(match.group(0))
+        if len(number) != 11 or not number.startswith(tuple("1" + str(i) for i in range(3, 10))):
+            return match.group(0)
         token = "〔手机号_" + hmac.new(secret, number.encode(), hashlib.sha256).hexdigest()[:12] + "〕"
         mapping[token] = number
         return token
 
-    return PHONE_RE.sub(replace, text), mapping
+    return PHONE_CANDIDATE_RE.sub(replace, text), mapping
 
 
 @dataclass
