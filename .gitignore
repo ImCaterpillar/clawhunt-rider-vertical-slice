@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+.e2e-venv/
+playwright-report/
+test-results/
+e2e-mobile.png
