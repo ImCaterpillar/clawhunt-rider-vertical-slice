@@ -26,17 +26,17 @@ $env:RUN_BROWSER_E2E='1'
 python verify.py
 ```
 
-Playwright Chromium is required (`python -m playwright install chromium`). The browser check covers 375/390/414 widths, 150% text, consent, 7/7 registration, booking, revocation/deletion, and offline failure with input retention. Set `RIDER_DEMO_DB` to an isolated path before starting the server.
+Playwright Chromium is required (`python -m playwright install chromium`). The browser check covers 375/390/414 widths, 150% text, consent, 7/7 registration, booking, revocation/deletion, and a 10-second offline interval followed by page reload, session restoration, queued submission, and progress restoration. Set `RIDER_DEMO_DB` to an isolated path before starting the server.
 
-Expected results: core 9, workflow/dashboard 10, API 8; browser E2E prints `PASS`. Dashboard reconciliation uses a fixed seed and 12,000 synthetic events; SQL totals are checked against independent Python aggregation.
+Expected results: core 9, workflow/dashboard 10, acceptance fixtures 8, API 8; browser E2E prints `PASS`. Dashboard reconciliation uses a fixed seed and 12,000 synthetic events; SQL totals are checked against independent Python aggregation. Acceptance fixtures provide deterministic examples for the five task areas; they do not claim these mocked components meet production or full acceptance requirements.
 
 ## Evidence by task
 
-- #1804: persistent append-only audit rows have a hash-chain verification endpoint; tampering identifies the failing sequence. Demo lead rows store keyed tokens rather than raw phone/name. This is not an encryption vault or production key management.
-- #1805: fixed-seed 12,000-event synthetic dataset; Python and independent SQL metrics reconcile exactly. 144 parameter combinations reject PII fields/grouping/filters and assert no data is returned for rejected requests. `/api/v1/metrics` remains aggregate-only.
-- #1806: explicit status transition graph, normalized-phone lead deduplication, atomic 5-seat booking, and signed idempotent event outbox. Tests reject illegal transitions, duplicate events, and altered payload signatures.
-- #1807: local H5 flow passes Playwright at 375/390/414 widths and 150% root text size; offline API action is blocked without losing input. Static shell is cached, not offline application data.
-- #1808: consent gate, seven-slot parser, minor-stop path, and Unicode/zero-width phone masking variants are exercised.
+- #1804: persistent hash-linked audit tamper check; demo lead rows store keyed tokens. A generated 240-positive-case phone masking fixture reports recall and explicitly states false-positive rate is unmeasured. It does not implement tokenize/detokenize vault, key rotation, name/address evaluation, RBAC, retention jobs, or OWASP evidence.
+- #1805: fixed-seed 12,000-event synthetic dataset; Python and SQL metrics reconcile; query whitelist is exercised with PII fields/groups/filters. In-memory configuration fixture demonstrates second-person approval, version rollback, model-visibility export flags, and CSV watermark/audit receipt. No dashboard UI, five-way funnel suite, durable config service, or production export audit exists.
+- #1806: status transition graph, normalized lead deduplication, atomic SQLite 5-seat booking (API concurrency test: 10 contenders), signed idempotent outbox, bounded mocked retry, and a separate 50-contender/5-seat lock fixture. Generated CSV fixture imports 100 rows to 90 unique keys. No retry worker, staff UI, detokenize flow, per-person watermark, or deployed load test exists.
+- #1807: local H5 flow passes Playwright at 375/390/414 widths and 150% root text size. It now checks 10 seconds offline, reload, local session restoration, queued input retry, and restored server progress. Browser localStorage is demo-only and not a secure session-token design.
+- #1808: consent gate, seven-slot parser, minor-stop path, and Unicode/zero-width phone masking; synthetic 300-case policy fixture demonstrates cited mock answers, unknown/injection handoff. It is template-based, not a real policy corpus, independent evaluation, secure prompt-injection control, or primary/backup LLM integration.
 
 ## Explicit limits
 
